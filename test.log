@@ -1,4 +1,8 @@
 2026-10-05 10:15:01 Failed login for user admin from 192.168.1.50
 2026-10-05 10:15:03 Failed login for user admin from 192.168.1.50
 2026-10-05 10:15:05 Failed login for user admin from 192.168.1.50
+2026-10-05 10:15:09 Failed login for user root from 10.0.0.8
 2026-10-05 10:16:10 Successful login for user henri from 192.168.1.20
+2026-10-05 10:17:02 Failed login for user root from 10.0.0.8
+2026-10-05 10:17:04 Failed login for user admin from 192.168.1.50
+2026-10-05 10:17:06 Failed login for user test from 172.16.5.4
