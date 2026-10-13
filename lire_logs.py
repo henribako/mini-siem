@@ -1,11 +1,26 @@
+import sqlite3
 from datetime import datetime, timedelta
 
-SEUIL = 3                       # nombre d'échecs pour déclencher l'alerte
-FENETRE = timedelta(minutes=1)  # dans cette durée
+SEUIL = 3
+FENETRE = timedelta(minutes=1)
 
-# On range, pour chaque IP, la liste des heures de ses échecs
+# 1. Ouvre (ou crée) la base de données
+connexion = sqlite3.connect("siem.db")
+curseur = connexion.cursor()
+
+# 2. Crée le tableau "alertes" s'il n'existe pas encore
+curseur.execute("""
+    CREATE TABLE IF NOT EXISTS alertes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT,
+        ip TEXT,
+        nombre_echecs INTEGER,
+        type TEXT
+    )
+""")
+
+# 3. Lit les logs (comme avant)
 echecs = {}
-
 with open("test.log", "r", encoding="utf-8") as fichier:
     for ligne in fichier:
         if "Failed login" in ligne:
@@ -14,16 +29,21 @@ with open("test.log", "r", encoding="utf-8") as fichier:
             ip = mots[-1]
             echecs.setdefault(ip, []).append(heure)
 
+# 4. Détecte et enregistre les alertes
 print("=== Rapport de sécurité ===")
 for ip, heures in echecs.items():
-    alerte = False
     for i in range(len(heures)):
-        # combien d'échecs dans la minute qui suit cet échec ?
         groupe = [h for h in heures if heures[i] <= h < heures[i] + FENETRE]
         if len(groupe) >= SEUIL:
-            alerte = True
+            print("ALERTE :", ip, "-", len(groupe), "échecs en moins d'une minute")
+            curseur.execute(
+                "INSERT INTO alertes (date, ip, nombre_echecs, type) VALUES (?, ?, ?, ?)",
+                (str(heures[i]), ip, len(groupe), "force brute"),
+            )
             break
-    if alerte:
-        print("ALERTE :", ip, "-", SEUIL, "échecs ou plus en moins d'une minute")
     else:
-        print("OK     :", ip, "-", len(heures), "échec(s), pas de rafale")
+        print("OK     :", ip, "-", len(heures), "échec(s)")
+
+# 5. Sauvegarde et ferme
+connexion.commit()
+connexion.close()
