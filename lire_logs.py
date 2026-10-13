@@ -15,7 +15,8 @@ curseur.execute("""
         date TEXT,
         ip TEXT,
         nombre_echecs INTEGER,
-        type TEXT
+        type TEXT,
+        UNIQUE (date, ip, type)
     )
 """)
 
@@ -37,7 +38,7 @@ for ip, heures in echecs.items():
         if len(groupe) >= SEUIL:
             print("ALERTE :", ip, "-", len(groupe), "échecs en moins d'une minute")
             curseur.execute(
-                "INSERT INTO alertes (date, ip, nombre_echecs, type) VALUES (?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO alertes (date, ip, nombre_echecs, type) VALUES (?, ?, ?, ?)",
                 (str(heures[i]), ip, len(groupe), "force brute"),
             )
             break
