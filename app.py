@@ -3,8 +3,8 @@ from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
 
-SEUIL = 3
-FENETRE = timedelta(minutes=1)
+SEUIL_DEFAUT = 3      # nombre d'échecs
+FENETRE_DEFAUT = 60   # en secondes
 
 PAGE = """
 <!DOCTYPE html>
@@ -61,7 +61,18 @@ PAGE = """
             font-size: 14px;
             resize: vertical;
         }
-        textarea:focus { outline: 2px solid var(--accent); }
+        textarea:focus, input:focus { outline: 2px solid var(--accent); }
+        .reglages { display: flex; gap: 20px; margin-top: 16px; flex-wrap: wrap; }
+        .reglages label { display: flex; flex-direction: column; font-size: 14px; color: var(--discret); gap: 6px; }
+        input[type=number] {
+            width: 160px;
+            background: var(--fond);
+            color: var(--texte);
+            border: 1px solid var(--bordure);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 15px;
+        }
         .boutons { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
         button {
             padding: 10px 22px;
@@ -74,6 +85,7 @@ PAGE = """
         }
         button.principal { background: var(--accent); border-color: var(--accent); font-weight: bold; color: #0d1117; }
         button:hover { opacity: 0.85; }
+        .resume { color: var(--discret); margin-bottom: 12px; }
         .resultat {
             padding: 14px 16px;
             margin: 10px 0;
@@ -83,7 +95,7 @@ PAGE = """
         .alerte { background: rgba(248, 81, 73, 0.12); border-color: var(--rouge); }
         .ok { background: rgba(63, 185, 80, 0.12); border-color: var(--vert); }
         footer { text-align: center; color: var(--discret); padding: 20px; font-size: 14px; }
-        #matrix { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.10; }
+        #matrix { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.3; }
     </style>
 </head>
 <body>
@@ -99,6 +111,18 @@ PAGE = """
             <h2>1. Colle tes logs</h2>
             <form method="post">
                 <textarea id="logs" name="logs" placeholder="2026-10-05 10:15:01 Failed login for user admin from 192.168.1.50">{{ logs }}</textarea>
+
+                <div class="reglages">
+                    <label>
+                        Seuil d'alerte (nombre d'échecs)
+                        <input type="number" name="seuil" min="1" max="1000" value="{{ seuil }}">
+                    </label>
+                    <label>
+                        Fenêtre de temps (secondes)
+                        <input type="number" name="fenetre" min="1" max="86400" value="{{ fenetre }}">
+                    </label>
+                </div>
+
                 <div class="boutons">
                     <button type="submit" class="principal">🔍 Analyser</button>
                     <button type="button" onclick="chargerExemple()">Charger un exemple</button>
@@ -109,6 +133,7 @@ PAGE = """
         {% if resultats is not none %}
         <div class="carte">
             <h2>2. Résultats</h2>
+            <div class="resume">Règle utilisée : {{ seuil }} échecs ou plus en {{ fenetre }} secondes.</div>
             {% if resultats|length == 0 %}
                 <p>Aucune tentative de connexion échouée trouvée.</p>
             {% endif %}
@@ -165,7 +190,17 @@ PAGE = """
 """
 
 
-def analyser(texte):
+def lire_nombre(valeur, defaut, minimum, maximum):
+    """Transforme le texte du formulaire en nombre, avec des limites de sécurité."""
+    try:
+        nombre = int(valeur)
+    except (TypeError, ValueError):
+        return defaut
+    return max(minimum, min(maximum, nombre))
+
+
+def analyser(texte, seuil, fenetre_secondes):
+    fenetre = timedelta(seconds=fenetre_secondes)
     echecs = {}
     for ligne in texte.splitlines():
         if "Failed login" in ligne:
@@ -180,14 +215,14 @@ def analyser(texte):
     resultats = []
     for ip, heures in echecs.items():
         for i in range(len(heures)):
-            groupe = [h for h in heures if heures[i] <= h < heures[i] + FENETRE]
-            if len(groupe) >= SEUIL:
+            groupe = [h for h in heures if heures[i] <= h < heures[i] + fenetre]
+            if len(groupe) >= seuil:
                 resultats.append({"classe": "alerte",
-                                  "texte": f"ALERTE : {ip} - {len(groupe)} échecs en moins d'une minute"})
+                                  "texte": f"ALERTE : {ip} - {len(groupe)} échecs en moins de {fenetre_secondes} s"})
                 break
         else:
             resultats.append({"classe": "ok",
-                              "texte": f"OK : {ip} - {len(heures)} échec(s)"})
+                              "texte": f"OK : {ip} - {len(heures)} échec(s) au total, pas de rafale"})
     return resultats
 
 
@@ -195,10 +230,15 @@ def analyser(texte):
 def accueil():
     logs = ""
     resultats = None
+    seuil = SEUIL_DEFAUT
+    fenetre = FENETRE_DEFAUT
     if request.method == "POST":
         logs = request.form.get("logs", "")
-        resultats = analyser(logs)
-    return render_template_string(PAGE, logs=logs, resultats=resultats)
+        seuil = lire_nombre(request.form.get("seuil"), SEUIL_DEFAUT, 1, 1000)
+        fenetre = lire_nombre(request.form.get("fenetre"), FENETRE_DEFAUT, 1, 86400)
+        resultats = analyser(logs, seuil, fenetre)
+    return render_template_string(PAGE, logs=logs, resultats=resultats,
+                                  seuil=seuil, fenetre=fenetre)
 
 
 if __name__ == "__main__":
